@@ -1,0 +1,653 @@
+<!DOCTYPE HTML>
+
+<link href="css/site.css" rel="stylesheet"/>
+<h1> Video Converter Using GPU </h1>
+<br>
+<br>
+
+<h2>By FFMPEG </h2>
+<br>
+<html lang="en">
+<head>
+<!-- Force latest IE rendering engine or ChromeFrame if installed -->
+<!--[if IE]>
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+<![endif]-->
+<meta charset="utf-8">
+<title>Video converter</title>
+<!-- <meta name="description" content="File Upload widget with multiple file selection, drag&amp;drop support, progress bars, validation and preview images, audio and video for jQuery. Supports cross-domain, chunked and resumable file uploads and client-side image resizing. Works with any server-side platform (PHP, Python, Ruby on Rails, Java, Node.js, Go etc.) that supports standard HTML form file uploads."> -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Bootstrap styles -->
+<link rel="stylesheet" href="lib/bootstrap.min.css">
+<!-- Generic page styles -->
+<link rel="stylesheet" href="css/style.css">
+<!-- blueimp Gallery styles -->
+<link rel="stylesheet" href="lib/blueimp-gallery.min.css">
+<!-- CSS to style the file input field as button and adjust the Bootstrap progress bars -->
+<link rel="stylesheet" href="css/jquery.fileupload.css">
+<link rel="stylesheet" href="css/jquery.fileupload-ui.css">
+<!-- CSS adjustments for browsers with JavaScript disabled -->
+<noscript><link rel="stylesheet" href="css/jquery.fileupload-noscript.css"></noscript>
+<noscript><link rel="stylesheet" href="css/jquery.fileupload-ui-noscript.css"></noscript>
+<script src="script.js"></script>
+<script src="a.css"></script>
+</head>
+<canvas id="c" width="auto" height="auto"></canvas>
+<body>
+<script id="shader-fs" type="x-shader/x-fragment">
+                #ifdef GL_ES
+                  precision highp float;
+                  #endif
+            void main(void) {
+             gl_FragColor = vec4(0.1, 0.25, 4.9, 0.6);
+            }
+        </script>
+
+  <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec3 vertexPosition;
+
+    uniform mat4 modelViewMatrix;
+    uniform mat4 perspectiveMatrix;
+
+    void main(void) {
+        gl_Position = perspectiveMatrix * modelViewMatrix * vec4(  vertexPosition, 0.0);
+    }
+  </script>
+</body>
+
+
+<style>
+body {
+
+   /*background: url(img/11.jpg) no-repeat center top;*/
+   /*background-image: url(img/1.jpg) ;*/
+   /*background: -moz-linear-gradient(#000,#080B43,#000567,#0108c6);*/
+   /*background: black;*/
+   background: -moz-linear-gradient(#262626,#262626,#707070);
+      /*background: -moz-linear-gradient(#FF00E6,#DE00FF,#BC00FF,#9500FF,#6F00FF,#4D00FF,#2F00FF,#004DFF,#007CFF,#00A2FF,#00C4FF,#00EFFF,#00FFEF,#00FFCD,#00FFA2,#00FF80,#00FF66,#00FF40,#00FF0D,#8DFF00,#AFFF00,#E2FF00,#FFFF00,#FFE200,#FFC900,#FFAB00,#FF9500,#FF7C00,#FF5E00,#FF4D00,#FF3C00,#FF0000);*/
+
+    /*height: 100 auto; 
+    width: 100%;*/
+
+ 
+    background-repeat: no-repeat;
+    background-size: cover;
+    padding:50;
+}
+#progress-bar {background-color: #12CC1A;height:20px;color: #FFFFFF;width:0%;-webkit-transition: width .3s;-moz-transition: width .3s;transition: width .3s;}
+#progress-div {border:#0FA015 1px solid;padding: 5px 0px;margin:30px 0px;border-radius:4px;text-align:center;}
+#targetLayer{width:100%;text-align:center;}
+
+</style>
+
+<!-- <div class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-fixed-top .navbar-collapse">
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+          
+         </div> 
+     
+</div> -->  
+ 
+
+<div class="container">
+
+    <ul class="nav nav-tabs">
+       
+    </ul>
+   <br>
+    <!-- The file upload form used as target for the file upload widget -->
+    <form id="fileupload" action="index.html" method="POST" enctype="multipart/form-data">
+        <!-- Redirect browsers with JavaScript disabled to the origin page
+        <noscript><input type="hidden" name="redirect" value="http://localhost/GPU/"></noscript>
+        < The fileupload-buttonbar contains buttons to add/delete files and start/cancel the upload -->
+        <div class="row fileupload-buttonbar">
+            <div class="col-lg-7">
+                <!-- The fileinput-button span is used to style the file input field as button -->
+                <center><span class="btn btn-success fileinput-button">
+                    <i class="glyphicon glyphicon-plus"></i>
+                    <span>Add files...</span>
+                    <input type="file" name="files[]" multiple>
+                </span></center>
+           
+                <span class="fileupload-process"></span>
+            </div>
+
+            <!-- The global progress state -->
+            <div class="col-lg-5 fileupload-progress fade">
+                <!-- The global progress bar -->
+                <div class="progress progress-striped active" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar progress-bar-success" style="width:0%;"></div>
+                </div>
+                <!-- The extended global progress state -->
+                <div class="progress-extended">&nbsp;</div>
+            </div>
+        </div>
+        <!-- The table listing the files available for upload/download -->
+        <table role="presentation" class="table table-striped"><tbody class="files"></tbody></table>
+    
+    </form>
+
+
+    <br>
+
+<div id="blueimp-gallery" class="blueimp-gallery blueimp-gallery-controls" data-filter=":even">
+    <div class="slides"></div>
+    <h3 class="title"></h3>
+    <a class="prev">‹</a>
+    <a class="next">›</a>
+    <a class="close">×</a>
+    <a class="play-pause"></a>
+    <ol class="indicator"></ol>
+</div>
+
+<!-- The template to display files available for upload -->
+<script id="template-upload" type="text/x-tmpl">
+{% for (var i=0, file; file=o.files[i]; i++) { %}
+    <tr class="template-upload fade">
+        <td>
+            <span class="preview"></span>
+        </td>
+
+        <td>
+            <p class="name">{%=file.name%}</p>
+            <strong class="error text-danger"></strong>
+        </td>
+
+        <td>
+            <p class="size">Processing...</p>
+            <div class="progress progress-striped active" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar progress-bar-success" style="width:0%;"></div></div>
+        </td>
+        <td>
+            {% if (!i && !o.options.autoUpload) { %}
+                <button class="btn btn-primary start" disabled>
+                    <i class="glyphicon glyphicon-upload"></i>
+                    <span>Start</span>
+                </button>
+            {% } %}
+            {% if (!i) { %}
+                <button class="btn btn-warning cancel">
+                    <i class="glyphicon glyphicon-ban-circle"></i>
+                    <span>Cancel</span>
+                </button>
+            {% } %}
+
+        </td>
+    </tr>
+{% } %}
+
+</script>
+
+
+
+<!-- <input type="button" value="Reset Form" onClick="this.form.reset()" /> -->
+
+
+<script id="template-download" type="text/x-tmpl">
+{% for (var i=0, file; file=o.files[i]; i++) { %}
+
+
+
+    <tr class="template-download fade">
+        <td>
+            <span class="preview">
+                {% if (file.thumbnailUrl) { %}
+                    <a href="{%=file.url%}" title="{%=file.name%}" download="{%=file.name%}" data-gallery><img src="{%=file.thumbnailUrl%}"></a>
+                {% } %}
+            </span>
+        </td>
+        <td>
+
+   <!--form check box -->
+
+ <form id="myform" class="myform" method="post" name="myform" >
+<input type="radio" name="checkbox" id="checkbox" value="{%=file.url%}" />
+<br/>
+<input type="button" value="clear" onClick="this.form.reset()" />
+</form>
+   <!--form check box -->
+<!-- <input type="radio" name="user_options" value="20" /> 20
+ -->
+
+            <p class="name">
+
+
+
+             
+                    <span>{%=file.name%}</span>
+               
+            </p>
+            {% if (file.error) { %}
+                <div><span class="label label-danger">Error</span> {%=file.error%}</div>
+            {% } %}
+        </td>
+
+        <td>
+            <span class="size">{%=o.formatFileSize(file.size)%}</span>
+        </td>
+        <td>
+            {% if (file.deleteUrl) { %}
+                <button class="btn btn-danger delete" data-type="{%=file.deleteType%}" data-url="{%=file.deleteUrl%}"{% if (file.deleteWithCredentials) { %} data-xhr-fields='{"withCredentials":true}'{% } %}>
+                    <i class="glyphicon glyphicon-trash"></i>
+                    <span>Delete</span>
+
+                </button>
+
+                <!-- <input type="checkbox" name="delete" value="1" class="toggle"> -->
+            {% } else { %}
+                <button class="btn btn-warning cancel">
+                    <i class="glyphicon glyphicon-ban-circle"></i>
+                    <span>Cancel</span>
+                </button>
+            {% } %}
+        </td>
+    </tr>
+
+{% } %}
+</script>
+</div>
+<!-- </html> -->
+<center>
+<div class="btn-group">
+ <form id="myform" class="myform" method="post" name="myform" >
+<!-- <input type="checkbox" name="checkbox" id="checkbox" value="{%=file.url%}" /><br /> -->
+เลือกเวลาด้านหน้าของวีดีโอ เพื่อการทดลอง &nbsp;&nbsp;&nbsp;&nbsp;<input type="radio" class="message_pri" name="message_pri" value="5" /> 5 วินาที
+&nbsp;
+<input type="radio" class="message_pri" name="message_pri" value="60" /> 1 นาที
+&nbsp;
+<input type="radio" class="message_pri" name="message_pri" value="300" /> 5 นาที
+&nbsp;
+<input type="radio" class="message_pri" name="message_pri" value="600" /> 10 นาที
+&nbsp;
+<input type="radio" class="message_pri" name="message_pri" value="900" /> 15 นาที
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+<input type="button" value="reset select time" onClick="this.form.reset()" /> 
+
+<!-- <input type="radio" class="message_pri" name="message_pri" value="10" /> 10 -->
+
+<!-- <input type="radio" name="user_options" value="20" /> 20
+ -->
+</form>
+</div>
+</center>
+
+<!-- <input type="radio" class="message_pri" name="message_pri" value="10" /> 10 -->
+
+<!-- <input type="radio" name="user_options" value="20" /> 20
+ -->
+</form>
+
+
+
+
+<!-- <script>
+
+
+function uncheck() {
+    document.getElementById("checkbox").checked = false;
+}
+</script> -->
+ <!-- <div id="loader-icon" style="display:none;"><img src="Wedges.gif" /></div> -->
+
+<link href="css/site.css" rel="stylesheet"/>
+<center>
+ <!-- <div id="loader-icon" style="display:none;"><img src="Wedge.gif" /></div> -->
+
+ <div id="loader-icon" style="display:none;"><img src="Wedge.gif" /></div>
+
+<div class="container">
+    <div class="header">
+ <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_mp4()">MP4</button></form>
+<!-- <div id="progress-div"><div id="progress-bar"></div></div>
+<div id="targetLayer"></div> -->
+ <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_mov()">MOV</button></form>
+ <!-- <img id="image-loader" src="img/loading.gif" style="visibility: hidden;"> -->
+ <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_mkv()">MKV</button></form>
+ <!-- <img id="image-loader" src="img/loading.gif" style="visibility: hidden;"> -->
+ <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_avi()">AVI</button></form>
+
+
+ <!-- <img id="image-loader" src="img/loading.gif" style="visibility: hidden;"> -->
+</div>
+</div>
+</center>
+<center>
+<div class="container">
+ <div class="header">
+<form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_mp4_iphone()">Iphone 7 Plus</button></form>
+ <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_mp4_ipad()">Ipad Pro 12.9 </button></form>
+ <!-- <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_mkv()">MKV</button></form> -->
+ <!-- <form class="btn form-1"><button id="submit" type="button" name="submit" onclick="return submit_avi()">AVI</button></form> -->
+
+</div>
+</div>
+
+ </center>
+
+</div>
+<br><br><br>
+
+<script >
+
+
+ function submit_mp4() 
+ {
+
+// var message_pri = $(".message_pri:checked").val();
+
+var form = document.myform;
+
+var dataString = $(form).serialize();
+            $('#loader-icon').show();
+
+$.ajax
+({
+    type:'POST',
+    url:'mp4.php',
+    data: dataString,
+//                 target:   '#targetLayer', 
+// beforeSubmit: function() {
+//                   $("#progress-bar").width('0%');
+//                 },
+//                 uploadProgress: function (event, position, total, percentComplete){ 
+//                     $("#progress-bar").width(percentComplete + '%');
+//                     $("#progress-bar").html('<div id="progress-status">' + percentComplete +' %</div>')
+//                 },
+    success: function(data)
+    {
+                            $('#loader-icon').hide();
+
+        // $('#myResponse').html(data);
+       $('#message').html(data);
+
+        confirm(data);
+            // <img id="image-loader" src="img/loading.gif" style="visibility: hidden;">
+            $b = confirm('Do you want to download?');
+            {
+               if ($b == true) 
+               {
+                         window.location.href="download_mp4.php"
+                } 
+            }  
+           
+   }
+
+});
+// }else{alert('PLEASE SELECT VIDEO');}
+
+return false;
+}
+
+/////////////////////////////////////////////////////////////mp4 ipad Pro 12.9
+
+ function submit_mp4_ipad() 
+ {
+
+var form = document.myform;
+
+var dataString = $(form).serialize();
+  $('#loader-icon').show();
+$.ajax
+({
+    type:'POST',
+    url:'mp4ipad12.9.php',
+    data: dataString,
+    success: function(data)
+    {
+                                    $('#loader-icon').hide();
+
+        // $('#myResponse').html(data);
+       $('#message').html(data);
+
+
+        confirm(data);
+            // window.alert(data);
+
+        // if(data === " ")
+        // {
+            $b = confirm('Do you want to download?');
+            {
+               if ($b == true) 
+               {
+                         window.location.href="download_mp4ipad12.9.php"
+                } 
+            }  
+           
+   }
+
+});
+// }else{alert('PLEASE SELECT VIDEO');}
+
+return false;
+}
+
+
+/////////////////////////////////////////////////////////////mp4 iphone
+
+ function submit_mp4_iphone() 
+ {
+
+var form = document.myform;
+
+var dataString = $(form).serialize();
+  $('#loader-icon').show();
+$.ajax
+({
+    type:'POST',
+    url:'mp4iphone.php',
+    data: dataString,
+    success: function(data)
+    {
+                                    $('#loader-icon').hide();
+
+        // $('#myResponse').html(data);
+       $('#message').html(data);
+
+
+        confirm(data);
+            // window.alert(data);
+
+        // if(data === " ")
+        // {
+            $b = confirm('Do you want to download?');
+            {
+               if ($b == true) 
+               {
+                         window.location.href="download_iphone.php"
+                } 
+            }  
+           
+   }
+
+});
+// }else{alert('PLEASE SELECT VIDEO');}
+
+return false;
+}
+  
+  // }
+ ///////////////////////////////////////////////////////////////////////////mov///////////////////////////////////////////////////////
+
+ function submit_mov() {
+var form = document.myform;
+
+var dataString = $(form).serialize();
+
+  $('#loader-icon').show();
+
+$.ajax({
+    type:'POST',
+    url:'mov.php',
+    data: dataString,
+    success: function(data){
+                                            $('#loader-icon').hide();
+
+        // $('#myResponse').html(data);
+       $('#message').html(data);
+confirm(data);
+
+            $b = confirm(' Do you want to download?');
+            {
+               if ($b == true) 
+               {  
+                         window.location.href="download_mov.php"
+                } else {
+   
+}
+                
+            }
+        
+
+    }
+});
+return false;
+}
+// ///////////////////////////////////////////////////////////////////////mkv///////////////////////////////////////////////////////////
+ function submit_mkv() {
+var form = document.myform;
+
+var dataString = $(form).serialize();
+  $('#loader-icon').show();
+
+$.ajax({
+    type:'POST',
+    url:'mkv.php',
+    data: dataString,
+    success: function(data){
+                                                    $('#loader-icon').hide();
+
+        // $('#myResponse').html(data);
+       $('#message').html(data);
+confirm(data);
+
+            $b = confirm('Do you want to download?');
+            {
+               if ($b == true) 
+               {
+                         window.location.href="download_mkv.php"
+                } else {
+    // txt = "You pressed Cancel!";
+}
+                
+            }
+
+    }
+});
+return false;
+}
+
+
+
+
+
+// ///////////////////////////////////////////////////////////////////////avi///////////////////////////////////////////////////////////
+
+ function submit_avi() {
+var form = document.myform;
+
+var dataString = $(form).serialize();
+  $('#loader-icon').show();
+
+$.ajax({
+    type:'POST',
+    url:'avi.php',
+    data: dataString,
+    success: function(data){
+                                                            $('#loader-icon').hide();
+
+        // $('#myResponse').html(data);
+       $('#message').html(data);
+confirm(data);
+
+            $b = confirm('Do you want to download?');
+            {
+               if ($b == true) 
+               {
+                         window.location.href="download_avi.php"
+                } else {
+//     // txt = "You pressed Cancel!";
+}
+                
+            }
+
+    }
+});
+return false;
+}
+
+
+
+
+//  function submit_avi() {
+// var form = document.myform;
+
+// var dataString = $(form).serialize();
+// $.ajax({
+//     type:'POST',
+//     url:'avi.php',
+//     data: dataString,
+//     success: function(data){
+//         // $('#myResponse').html(data);
+//        $('#message').html(data);
+// confirm(data);
+
+//             $b = confirm('Do you want to download?');
+//             {
+//                if ($b == true) 
+//                {
+//                          window.location.href="download_avi.php"
+//                 } else {
+//     // txt = "You pressed Cancel!";
+// }
+                
+//             }
+
+//     }
+// });
+// return false;
+// }
+
+
+</script>
+<script src="js/jquery.form.min.js"></script>
+
+<script src="lib/jquery.min.js"></script>
+<!-- The jQuery UI widget factory, can be omitted if jQuery UI is already included -->
+<script src="js/vendor/jquery.ui.widget.js"></script>
+<!-- The Templates plugin is included to render the upload/download listings -->
+<script src="lib/tmpl.min.js"></script>
+<!-- The Load Image plugin is included for the preview images and image resizing functionality -->
+<script src="lib/load-image.all.min.js"></script>
+<!-- The Canvas to Blob plugin is included for image resizing functionality -->
+<script src="lib/canvas-to-blob.min.js"></script>
+<!-- Bootstrap JS is not required, but included for the responsive demo navigation -->
+<script src="lib/bootstrap.min.js"></script>
+<!-- blueimp Gallery script -->
+<script src="lib/jquery.blueimp-gallery.min.js"></script>
+<!-- The Iframe Transport is required for browsers without support for XHR file uploads -->
+<script src="js/jquery.iframe-transport.js"></script>
+<!-- The basic File Upload plugin -->
+<script src="js/jquery.fileupload.js"></script>
+<!-- The File Upload processing plugin -->
+<script src="js/jquery.fileupload-process.js"></script>
+<!-- The File Upload image preview & resize plugin -->
+<script src="js/jquery.fileupload-image.js"></script>
+<!-- The File Upload audio preview plugin -->
+<script src="js/jquery.fileupload-audio.js"></script>
+<!-- The File Upload video preview plugin -->
+<script src="js/jquery.fileupload-video.js"></script>
+<!-- The File Upload validation plugin -->
+<script src="js/jquery.fileupload-validate.js"></script>
+<!-- The File Upload user interface plugin -->
+<script src="js/jquery.fileupload-ui.js"></script>
+<!-- The main application script -->
+<script src="js/main.js"></script>
+
+</body>
+
+</html>
+
